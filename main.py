@@ -202,19 +202,38 @@ def fetch_modrinth_search(query: str, server_type: str):
         logger.error(f"Modrinth Filtered Search Error: {e}")
         return []
 
-def get_modrinth_download_url(project_id: str):
-    """특정 프로젝트의 최신 다운로드 파일 URL과 이름을 반환합니다."""
+# --- [수정] 서버 타입에 매칭되는 최신 파일 검색 로직 ---
+def get_modrinth_download_url(project_id: str, server_type: str):
+    """특정 프로젝트의 버전 목록 중 서버 타입과 호환되는 최신 파일을 찾습니다."""
     url = f"https://api.modrinth.com/v2/project/{project_id}/version"
     req = urllib.request.Request(url, headers={'User-Agent': 'DiscordBot-MinecraftManager/1.0'})
+    
+    # 서버 타입에 따른 매칭 태그 설정
+    # Modrinth는 소문자 태그를 사용하므로 맞춰줍니다.
+    target_loader = server_type.lower() 
+    if target_loader == "arclight":
+        # Arclight는 기본적으로 Forge 기반이 많으므로 forge/spigot 둘 다 확인 가능하지만
+        # 여기서는 안전하게 spigot/paper 계열을 우선 순위로 둡니다.
+        target_loaders = ["paper", "spigot", "bukkit"]
+    elif target_loader == "paper":
+        target_loaders = ["paper", "spigot", "bukkit"]
+    else:
+        target_loaders = [target_loader]
+
     try:
         with urllib.request.urlopen(req) as response:
             versions = json.loads(response.read().decode())
             for v in versions:
-                if v.get('files'):
-                    # 첫 번째(최신) 파일의 다운로드 URL과 파일명 반환
-                    return v['files'][0]['url'], v['files'][0]['filename']
+                # 해당 버전이 지원하는 로더 목록 확인 (예: ["fabric", "paper", "spigot"])
+                supported_loaders = [l.lower() for l in v.get('loaders', [])]
+                
+                # 서버가 요구하는 로더 중 하나라도 포함되어 있는지 확인
+                if any(loader in supported_loaders for loader in target_loaders):
+                    if v.get('files'):
+                        # 매칭되는 최신 버전의 첫 번째 파일 반환
+                        return v['files'][0]['url'], v['files'][0]['filename']
     except Exception as e:
-        print(f"Modrinth Download Error: {e}")
+        logger.error(f"Modrinth Version Match Error: {e}")
     return None, None
 
 def get_latest_mc_version():
@@ -269,9 +288,17 @@ class PluginSelect(discord.ui.Select):
         await interaction.followup.send(f"⏳ `{selected_label}` 다운로드를 준비 중입니다...", ephemeral=True)
         
         try:
-            url, filename = await asyncio.to_thread(get_modrinth_download_url, project_id)
+            url, filename = await asyncio.to_thread(
+                get_modrinth_download_url, 
+                project_id, 
+                self.server_type
+            )
+            
             if not url:
-                await interaction.followup.send("⚠️ 해당 프로젝트의 다운로드 파일을 찾을 수 없습니다.", ephemeral=True)
+                await interaction.followup.send(
+                    f"⚠️ 이 항목은 `{self.server_type}` 환경을 지원하는 파일을 찾을 수 없습니다.", 
+                    ephemeral=True
+                )
                 return
             
             # --- 💡 완벽하게 개선된 타겟 디렉토리(폴더) 분류 로직 ---
