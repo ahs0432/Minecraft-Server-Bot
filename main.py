@@ -41,6 +41,24 @@ def log_interaction(user, command, target=None, result="Success"):
     log_msg += f" | 결과: {result}"
     logger.info(log_msg)
 
+# --- Phase 15: 서버 콘솔 명령 전달 함수 ---
+async def send_mc_command(server_name: str, command: str):
+    """실행 중인 마인크래프트 컨테이너 콘솔에 명령어를 전달합니다."""
+    try:
+        container = docker_client.containers.get(server_name)
+        if container.status != "running":
+            return False, "서버가 실행 중이 아닙니다."
+        
+        # rcon-cli 또는 mc-send-to-console 사용 (itzg 이미지 내장 기능)
+        # 명령 예: op [유저명], deop [유저명]
+        exec_log = container.exec_run(f"mc-send-to-console {command}")
+        
+        logger.info(f"[콘솔 명령] 서버: {server_name} | 명령: {command}")
+        return True, "성공"
+    except Exception as e:
+        logger.error(f"Console Command Error: {e}")
+        return False, str(e)
+
 # 환경 변수 및 디스코드 권한 셋팅
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -545,6 +563,16 @@ class ServerControlView(discord.ui.View):
         btn_plugin.callback = self.plugin_button
         self.add_item(btn_plugin)
 
+        # [신규] 플러그인 설치 버튼 추가
+        btn_op = discord.ui.Button(label="OP 부여", style=discord.ButtonStyle.secondary, emoji="👑", custom_id=f"op_{server_name}")
+        btn_op.callback = self.op_button
+        self.add_item(btn_op)
+
+        # [신규] 플러그인 설치 버튼 추가
+        btn_deop = discord.ui.Button(label="OP 회수", style=discord.ButtonStyle.secondary, emoji="🚫", custom_id=f"deop_{server_name}")
+        btn_deop.callback = self.deop_button
+        self.add_item(btn_deop)
+
     # --- [신규] View 공통 권한 검사 로직 ---
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         # 사용자가 관리자 권한이 없는 경우
@@ -552,6 +580,12 @@ class ServerControlView(discord.ui.View):
             await interaction.response.send_message("⛔ **접근 거부:** 서버 제어 패널은 관리자만 조작할 수 있습니다.", ephemeral=True)
             return False # False를 반환하면 버튼 콜백 함수가 실행되지 않음
         return True
+
+    async def op_button(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(OPManageModal(self.server_name, "op"))
+
+    async def deop_button(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(OPManageModal(self.server_name, "deop"))
 
     async def start_button(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -983,6 +1017,38 @@ async def setup_dashboard(ctx):
     if not update_dashboard.is_running():
         update_dashboard.start()
 
+# --- Phase 15: OP 부여/해제 전용 모달 ---
+class OPManageModal(discord.ui.Modal):
+    def __init__(self, server_name: str, action: str = "op"):
+        title = "관리자 권한(OP) 부여" if action == "op" else "관리자 권한(OP) 회수"
+        super().__init__(title=title)
+        self.server_name = server_name
+        self.action = action
+
+    player_name = discord.ui.TextInput(
+        label='플레이어 닉네임',
+        placeholder='정확한 마인크래프트 닉네임을 입력하세요.',
+        required=True
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("⛔ 권한이 없습니다.", ephemeral=True)
+            return
+
+        p_name = self.player_name.value.strip()
+        command = f"{self.action} {p_name}"
+        
+        success, msg = await send_mc_command(self.server_name, command)
+        
+        if success:
+            log_interaction(interaction.user, self.action, f"{self.server_name} - {p_name}")
+            await interaction.response.send_message(
+                f"✅ **{self.server_name}** 서버의 `{p_name}` 님에게 **{self.action.upper()}** 명령을 전달했습니다.", 
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(f"❌ 실패: {msg}", ephemeral=True)
 
 # 기존의 기본 help 명령어 비활성화
 bot.remove_command('help')
