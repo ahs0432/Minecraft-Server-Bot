@@ -408,6 +408,7 @@ async def create_server(ctx, base_name: str, version: str = "LATEST", memory: st
                 "VERSION": resolved_version,
                 "TYPE": s_type,
                 "MEMORY": jvm_mem_limit,
+                "CREATE_CONSOLE_IN_PIPE": "true",
 
                 # --- 최적화 핵심 설정 시작 ---
                 "USE_AIKAR_FLAGS": "TRUE",         # GC(가비지 컬렉션) 효율 극대화 (Aikar's Flags)
@@ -821,6 +822,7 @@ class ServerCreateModal(discord.ui.Modal, title='새 마인크래프트 서버 �
                     "VERSION": resolved_version, # 도커 내부에도 실제 버전 넘겨주기
                     "TYPE": s_type,
                     "MEMORY": jvm_mem_limit,
+                    "CREATE_CONSOLE_IN_PIPE": "true",
 
                     # --- 최적화 핵심 설정 시작 ---
                     "USE_AIKAR_FLAGS": "TRUE",         # GC(가비지 컬렉션) 효율 극대화 (Aikar's Flags)
