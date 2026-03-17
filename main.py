@@ -41,7 +41,7 @@ def log_interaction(user, command, target=None, result="Success"):
     log_msg += f" | 결과: {result}"
     logger.info(log_msg)
 
-# --- Phase 15: 서버 콘솔 명령 전달 함수 ---
+# --- [수정] Podman Rootless 권한을 고려한 명령 전달 함수 ---
 async def send_mc_command(server_name: str, command: str):
     """실행 중인 마인크래프트 컨테이너 콘솔에 명령어를 전달합니다."""
     try:
@@ -49,12 +49,22 @@ async def send_mc_command(server_name: str, command: str):
         if container.status != "running":
             return False, "서버가 실행 중이 아닙니다."
         
-        # rcon-cli 또는 mc-send-to-console 사용 (itzg 이미지 내장 기능)
-        # 명령 예: op [유저명], deop [유저명]
-        exec_log = container.exec_run(f"mc-send-to-console {command}")
+        # [핵심 수정] user='1000' 옵션을 추가하여 Podman Rootless 권한 문제 해결
+        exec_result = container.exec_run(
+            cmd=f"mc-send-to-console {command}",
+            user='1000'  # itzg 이미지의 기본 유저 UID인 1000으로 실행
+        )
         
-        logger.info(f"[콘솔 명령] 서버: {server_name} | 명령: {command}")
-        return True, "성공"
+        # 결과 로그 확인 (디버깅용)
+        exit_code, output = exec_result.exit_code, exec_result.output.decode()
+        
+        if exit_code == 0:
+            logger.info(f"[콘솔 명령 성공] 서버: {server_name} | 명령: {command}")
+            return True, "성공"
+        else:
+            logger.error(f"[콘솔 명령 실패] 서버: {server_name} | 에러코드: {exit_code} | 내용: {output}")
+            return False, output
+            
     except Exception as e:
         logger.error(f"Console Command Error: {e}")
         return False, str(e)
