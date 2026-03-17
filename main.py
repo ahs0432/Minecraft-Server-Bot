@@ -325,7 +325,7 @@ class PluginSearchModal(discord.ui.Modal, title='Modrinth 플러그인 / 모드 
         
         try:
             # API 검색 (비동기 처리)
-            hits = await asyncio.to_thread(fetch_modrinth_search, query)
+            hits = await asyncio.to_thread(fetch_modrinth_search, query, self.server_type)
             if not hits:
                 await interaction.edit_original_response(content=f"⚠️ `{query}`에 대한 검색 결과가 없습니다.")
                 return
@@ -366,7 +366,7 @@ async def cmd_search_plugin(ctx, server_name: str, *, query: str):
                 
         msg = await ctx.send(f"🔍 `{server_name}` 서버에 설치할 `{query}` 검색 중...")
         
-        hits = await asyncio.to_thread(fetch_modrinth_search, query)
+        hits = await asyncio.to_thread(fetch_modrinth_search, query, server_type)
         if not hits:
             await msg.edit(content=f"⚠️ `{query}`에 대한 검색 결과가 없습니다.")
             return
