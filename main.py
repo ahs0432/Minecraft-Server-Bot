@@ -174,16 +174,32 @@ def save_dashboard_data():
         }, f)
 
 
-def fetch_modrinth_search(query: str):
-    """Modrinth에서 플러그인/모드를 검색하여 상위 10개 결과를 반환합니다."""
-    url = f"https://api.modrinth.com/v2/search?query={urllib.parse.quote(query)}&limit=10"
+# --- [수정] 서버 타입별 플랫폼 제한 검색 로직 ---
+def fetch_modrinth_search(query: str, server_type: str):
+    """서버 타입에 맞는 플랫폼(Loader)만 필터링하여 검색합니다."""
+    # Modrinth API 필터 설정
+    # Paper/Arclight는 spigot/paper/bukkit 호환 요소를, Fabric은 fabric만 찾습니다.
+    if server_type in ["PAPER", "ARCLIGHT"]:
+        # 하이브리드인 Arclight와 Paper는 범용성을 위해 spigot, paper 모두 포함
+        loader_filter = '[["categories:paper","categories:spigot","categories:bukkit"]]'
+    elif server_type == "FABRIC":
+        loader_filter = '[["categories:fabric"]]'
+    else:
+        loader_filter = ""
+
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://api.modrinth.com/v2/search?query={encoded_query}&limit=10"
+    
+    if loader_filter:
+        url += f"&facets={urllib.parse.quote(loader_filter)}"
+
     req = urllib.request.Request(url, headers={'User-Agent': 'DiscordBot-MinecraftManager/1.0'})
     try:
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode())
             return data.get('hits', [])
     except Exception as e:
-        print(f"Modrinth Search Error: {e}")
+        logger.error(f"Modrinth Filtered Search Error: {e}")
         return []
 
 def get_modrinth_download_url(project_id: str):
